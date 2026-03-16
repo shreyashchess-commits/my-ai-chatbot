@@ -5,7 +5,7 @@ import google.generativeai as genai
 st.title("🤖 My Personal AI")
 
 # 2. Add your API Key (Replace the text inside the quotes with your real key!)
-genai.configure(api_key="AIzaSyBCiuM4hLhPFpVbFk6iK_qlwkSwDaI0ZTc")
+genai.configure(api_key=st.secrets["MY_SECRET_KEY"])
 model = genai.GenerativeModel('gemini-2.5-flash')
 
 # 3. Setup the Chat Memory
