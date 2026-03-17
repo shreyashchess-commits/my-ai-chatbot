@@ -3,22 +3,38 @@ import google.generativeai as genai
 
 # 1. Page Setup
 st.set_page_config(page_title="My Personal AI", page_icon="🤖")
+
+# --- NEW: SIDEBAR MENU ---
+with st.sidebar:
+    st.title("⚙️ Settings & Info")
+    st.markdown("Welcome to my custom AI! This chatbot is powered by Google's Gemini 2.5 Flash model.")
+    st.markdown("It can answer questions, write code, and help with brainstorming.")
+    
+    st.divider() # This adds a nice neat line
+    
+    # Add a "Clear Chat" button
+    if st.button("🗑️ Clear Chat History"):
+        st.session_state.messages = [] # Wipes the memory clean
+        st.rerun() # Refreshes the screen
+# -------------------------
+
+# 2. Main Title
 st.title("🤖 My Personal AI")
 
-# 2. Add your API Key securely from the Streamlit Safe
+# 3. Add your API Key securely from the Streamlit Safe
 genai.configure(api_key=st.secrets["MY_SECRET_KEY"])
 model = genai.GenerativeModel('gemini-2.5-flash')
 
-# 3. Setup the Chat Memory (so it remembers the conversation)
+# 4. Setup the Chat Memory
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# 4. Show the past messages on the screen
+# 5. Show the past messages on the screen
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# 5. The Chat Box where the user types
+# 6. The Chat Box where the user types
 prompt = st.chat_input("Type your message here...")
 
 if prompt:
