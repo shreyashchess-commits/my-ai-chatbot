@@ -2,7 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 from supabase import create_client
 
-# --- 1. PAGE CONFIG & BRANDING ---
+# --- 1. PAGE CONFIG ---
 st.set_page_config(page_title="Omni-AI Pro", page_icon="⚡", layout="wide")
 
 # --- 2. SECURE CONNECTIONS ---
@@ -13,32 +13,40 @@ except Exception as e:
     st.error(f"Setup Error: {e}")
     st.stop()
 
-# --- 3. SIDEBAR: THE CONTROL CENTER ---
+# --- 3. SIDEBAR ---
 with st.sidebar:
     st.title("⚡ Omni-AI Control")
     st.caption("Commercial Grade Interface")
     st.divider()
 
-    # CATEGORY SELECTOR
     category = st.selectbox("🎯 Capability", ["Chat & Reasoning", "Image Generation"])
 
     if category == "Chat & Reasoning":
         model_choice = st.selectbox(
             "🧠 Select Brain",
             [
-                "gemini-3.1-flash-lite-preview", # Best for Free Tier (500/day)
-                "gemini-3.1-pro-preview",        # Smartest
-                "gemini-2.5-flash",              # Stable workhorse
-                "gemma-3-27b-it",                # Open Source Smart
-                "gemma-3-4b-it",                 # Open Source Fast
-                "gemini-2.5-flash-native-audio"  # Audio specialist
+                "gemini-1.5-flash-lite",         # Official ID for 3.1 Flash Lite
+                "gemini-1.5-flash",              # Stable workhorse
+                "gemini-1.5-pro",                # Smartest
+                "gemma-2-27b-it",                # Open Source
             ]
         )
     else:
         model_choice = st.selectbox(
             "🎨 Select Artist",
-            ["imagen-4.0-generate-001", "imagen-4.0-ultra-generate-001", "imagen-4.0-fast-generate-001"]
+            ["imagen-3.0-generate-001"] # Stable Image Model
         )
+
+    # --- THE MODEL WATCHER ---
+    # If the user changes the model, we clear the old session so the new model takes over
+    if "current_model" not in st.session_state:
+        st.session_state.current_model = model_choice
+
+    if st.session_state.current_model != model_choice:
+        st.session_state.current_model = model_choice
+        if "chat_session" in st.session_state:
+            del st.session_state.chat_session
+        st.toast(f"Switched to {model_choice}!", icon="🔄")
 
     st.divider()
     if st.button("🗑️ Reset All Progress", use_container_width=True):
@@ -47,38 +55,35 @@ with st.sidebar:
         st.rerun()
 
 # --- 4. ENGINE INITIALIZATION ---
-if "messages" not in st.session_state: st.session_state.messages = []
+if "messages" not in st.session_state: 
+    st.session_state.messages = []
 
 # --- 5. CHAT INTERFACE ---
 st.title(f"Ready: {model_choice}")
 
-# Show History
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar="👤" if msg["role"]=="user" else "🤖"):
         if "image" in msg: st.image(msg["image"])
         else: st.markdown(msg["content"])
 
-# User Input
 prompt = st.chat_input("Ask or describe an image...")
 
 if prompt:
-    # Save User Input
     st.chat_message("user", avatar="👤").markdown(prompt)
     st.session_state.messages.append({"role": "user", "content": prompt})
 
     with st.chat_message("assistant", avatar="🤖"):
         try:
-            # --- CHOICE A: IMAGE GENERATION ---
             if "imagen" in model_choice:
-                with st.spinner("🎨 Creating masterpiece..."):
-                    img_model = genai.ImageGenerationModel(model_choice)
-                    result = img_model.generate_images(prompt=prompt, number_of_images=1)
-                    image = result.images[0]
-                    st.image(image)
-                    st.session_state.messages.append({"role": "assistant", "image": image})
+                # Image Logic
+                img_model = genai.ImageGenerationModel(model_choice)
+                result = img_model.generate_images(prompt=prompt)
+                image = result.images[0]
+                st.image(image)
+                st.session_state.messages.append({"role": "assistant", "image": image})
             
-            # --- CHOICE B: CHAT GENERATION ---
             else:
+                # Chat Logic
                 chat_model = genai.GenerativeModel(model_choice)
                 if "chat_session" not in st.session_state:
                     st.session_state.chat_session = chat_model.start_chat(history=[])
@@ -92,9 +97,9 @@ if prompt:
                 full_text = st.write_stream(stream_data)
                 st.session_state.messages.append({"role": "assistant", "content": full_text})
                 
-                # Silent Log to Supabase
-                supabase.table("chat_history").insert({"user_message": prompt, "ai_message": full_text}).execute()
+                if supabase:
+                    supabase.table("chat_history").insert({"user_message": prompt, "ai_message": full_text}).execute()
 
         except Exception as e:
-            st.warning("⚠️ This model is at its limit.")
+            st.warning("⚠️ This model is temporarily unavailable or at its limit.")
             st.info(f"System Message: {str(e)}")
