@@ -4,60 +4,68 @@ import google.generativeai as genai
 # 1. Page Setup
 st.set_page_config(page_title="My Personal AI", page_icon="🤖")
 
-# --- NEW: SIDEBAR MENU ---
+# --- SIDEBAR MENU ---
 with st.sidebar:
     st.title("⚙️ Settings & Info")
-    st.markdown("Welcome to my custom AI! This chatbot is powered by Google's Gemini 2.5 Flash model.")
-    st.markdown("It can answer questions, write code, and help with brainstorming.")
-    
-    st.divider() # This adds a nice neat line
-    
-    # Add a "Clear Chat" button
+    st.markdown("Welcome to my custom AI!")
+    st.divider()
     if st.button("🗑️ Clear Chat History"):
-        st.session_state.messages = [] # Wipes the memory clean
-        st.rerun() # Refreshes the screen
+        st.session_state.messages = []
+        st.rerun()
 # -------------------------
 
-# 2. Main Title
-st.title("🤖 My Personal AI")
+st.title("🤖 My Custom AI")
 
-# 3. Add your API Key securely from the Streamlit Safe
+# 2. Add API Key safely
 genai.configure(api_key=st.secrets["MY_SECRET_KEY"])
-model = genai.GenerativeModel('gemini-2.5-flash')
 
-# 4. Setup the Chat Memory
+# --- NEW: SYSTEM INSTRUCTION (THE AI'S PERSONALITY) ---
+# You can change this text to make your AI act however you want!
+my_ai_personality = """
+You are a friendly, funny, and incredibly smart AI assistant. 
+Always be encouraging, use a few emojis in every response, and explain things as simply as possible. 
+If someone asks who made you, tell them a brilliant coder made you!
+"""
+
+model = genai.GenerativeModel(
+    'gemini-2.5-flash',
+    system_instruction=my_ai_personality # This gives the AI its instructions!
+)
+# --------------------------------------------------------
+
+# 3. Setup Chat Memory
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# 5. Show the past messages on the screen
+# 4. Show past messages with NEW AVATARS
 for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
+    # If the user is talking, use a human emoji. If the AI is talking, use a galaxy emoji!
+    avatar_icon = "🧑‍💻" if message["role"] == "user" else "🌌"
+    
+    with st.chat_message(message["role"], avatar=avatar_icon):
         st.markdown(message["content"])
 
-# 6. The Chat Box where the user types
+# 5. The Chat Box
 prompt = st.chat_input("Type your message here...")
 
 if prompt:
-    # Show the user's message on the screen
-    with st.chat_message("user"):
+    # Show user message with their avatar
+    with st.chat_message("user", avatar="🧑‍💻"):
         st.markdown(prompt)
     
-    # Save the user's message into memory
+    # Save user message
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    # Show the AI's response with the "Typing" effect
-    with st.chat_message("assistant"):
-        # Ask Gemini for the answer and tell it to stream
+    # Show AI response with its custom avatar
+    with st.chat_message("assistant", avatar="🌌"):
         response = model.generate_content(prompt, stream=True)
         
-        # Create a mini-delivery system to print words one by one
         def stream_data():
             for chunk in response:
                 if chunk.text:
                     yield chunk.text
         
-        # Use Streamlit's built-in typing effect!
         full_response = st.write_stream(stream_data)
         
-    # Save the AI's final message into memory
+    # Save AI message
     st.session_state.messages.append({"role": "assistant", "content": full_response})
