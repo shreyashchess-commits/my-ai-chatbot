@@ -6,10 +6,12 @@ from supabase import create_client
 st.set_page_config(page_title="My Custom AI", page_icon="🤖")
 
 # --- DATABASE SETUP ---
-# Grab the keys from the Streamlit Safe
-supabase_url = st.secrets["SUPABASE_URL"]
-supabase_key = st.secrets["SUPABASE_KEY"]
-supabase = create_client(supabase_url, supabase_key)
+# We use 'try/except' so the app won't crash if the database is asleep
+try:
+    supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+except Exception as e:
+    print("Database connection failed:", e)
+    supabase = None
 # ----------------------
 
 # --- SIDEBAR MENU ---
@@ -19,26 +21,24 @@ with st.sidebar:
     st.divider()
     if st.button("🗑️ Clear Chat History"):
         st.session_state.messages = []
+        if "chat_session" in st.session_state:
+            del st.session_state.chat_session
         st.rerun()
 # -------------------------
 
 st.title("🤖 My Custom AI")
 
-# 2. Add API Key safely
-genai.configure(api_key=st.secrets["MY_SECRET_KEY"])
+# 2. Add API Key Safely (The .strip() removes any accidental invisible spaces!)
+api_key = st.secrets["MY_SECRET_KEY"].strip()
+genai.configure(api_key=api_key)
 
-my_ai_personality = """
-You are a friendly, funny, and incredibly smart AI assistant. 
-Always be encouraging, use a few emojis in every response, and explain things as simply as possible. 
-If someone asks who made you, tell them a brilliant coder made you!
-"""
+# Use the exact, official model name
+model = genai.GenerativeModel('models/gemini-1.5-flash')
 
-model = genai.GenerativeModel(
-    'gemini-1.5-flash',
-    system_instruction=my_ai_personality
-)
+# 3. Setup Official Chat Memory
+if "chat_session" not in st.session_state:
+    st.session_state.chat_session = model.start_chat(history=[])
 
-# 3. Setup Chat Memory
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -52,13 +52,16 @@ for message in st.session_state.messages:
 prompt = st.chat_input("Type your message here...")
 
 if prompt:
+    # Show user message
     with st.chat_message("user", avatar="🧑‍💻"):
         st.markdown(prompt)
     
     st.session_state.messages.append({"role": "user", "content": prompt})
 
+    # Show AI response
     with st.chat_message("assistant", avatar="🌌"):
-        response = model.generate_content(prompt, stream=True)
+        # Send the message to the memory bank!
+        response = st.session_state.chat_session.send_message(prompt, stream=True)
         
         def stream_data():
             for chunk in response:
@@ -69,12 +72,12 @@ if prompt:
         
     st.session_state.messages.append({"role": "assistant", "content": full_response})
 
-    # --- NEW: SAVE TO DATABASE ---
-    # This quietly writes the conversation to your Supabase ledger!
-    try:
-        supabase.table("chat_history").insert({
-            "user_message": prompt,
-            "ai_message": full_response
-        }).execute()
-    except Exception as e:
-        print(f"Database error: {e}")
+    # --- SAVE TO DATABASE ---
+    if supabase:
+        try:
+            supabase.table("chat_history").insert({
+                "user_message": prompt,
+                "ai_message": full_response
+            }).execute()
+        except Exception as e:
+            print(f"Database error: {e}")
