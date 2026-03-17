@@ -11,7 +11,7 @@ google_key = st.secrets["MY_SECRET_KEY"].strip()
 genai.configure(api_key=google_key)
 
 # Using the most stable model name
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-pro')
 
 # --- 2. SETUP DATABASE ---
 try:
