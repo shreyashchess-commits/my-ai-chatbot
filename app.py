@@ -2,106 +2,86 @@ import streamlit as st
 import google.generativeai as genai
 from supabase import create_client
 
-# --- 1. PAGE CONFIG ---
-st.set_page_config(page_title="Omni-AI Pro", page_icon="⚡", layout="wide")
+# --- 1. PROFESSIONAL PAGE SETUP ---
+st.set_page_config(page_title="Premium AI Assistant", page_icon="✨", layout="centered")
 
-# --- 2. SECURE CONNECTIONS ---
+# --- 2. SECURE CLOUD CONNECTIONS ---
 try:
-    genai.configure(api_key=st.secrets["MY_SECRET_KEY"].strip())
-    supabase = create_client(st.secrets["SUPABASE_URL"].strip(), st.secrets["SUPABASE_KEY"].strip())
+    google_key = st.secrets["MY_SECRET_KEY"].strip()
+    genai.configure(api_key=google_key)
+    
+    # THE PINPOINT FIX: Using the exact ID for your 500-message model
+    MODEL_ID = 'gemini-3.1-flash-lite-preview' 
+    model = genai.GenerativeModel(MODEL_ID)
+    
 except Exception as e:
-    st.error(f"Setup Error: {e}")
+    st.error(f"Configuration Error: {e}")
     st.stop()
 
-# --- 3. AUTO-MODEL DISCOVERY ---
-# This part is the "expert" fix. It looks for a working 'lite' model.
-@st.cache_resource
-def get_available_lite_model():
-    try:
-        for m in genai.list_models():
-            # Looks for any model with 'flash' and 'lite' in the name
-            if 'flash' in m.name and 'lite' in m.name:
-                return m.name
-        return "gemini-1.5-flash" # Fallback if no lite is found
-    except:
-        return "gemini-1.5-flash"
+# Silent Database Connection (No status shown to users)
+try:
+    supabase = create_client(st.secrets["SUPABASE_URL"].strip(), st.secrets["SUPABASE_KEY"].strip())
+except Exception:
+    supabase = None
 
-LITE_MODEL = get_available_lite_model()
-
-# --- 4. SIDEBAR ---
+# --- 3. UI: CLEAN SIDEBAR ---
 with st.sidebar:
-    st.title("⚡ Omni-AI Control")
-    st.caption("Commercial Grade Interface")
+    st.title("✨ AI Assistant Pro")
+    st.caption("Custom Intelligence Engine")
     st.divider()
-
-    category = st.selectbox("🎯 Capability", ["Chat & Reasoning", "Image Generation"])
-
-    if category == "Chat & Reasoning":
-        model_choice = st.selectbox(
-            "🧠 Select Brain",
-            [
-                LITE_MODEL,      # The auto-discovered Lite model (500/day)
-                "gemini-1.5-flash", 
-                "gemini-1.5-pro",
-                "gemma-2-27b-it"
-            ]
-        )
-    else:
-        model_choice = st.selectbox(
-            "🎨 Select Artist",
-            ["imagen-3.0-generate-001"]
-        )
-
-    st.divider()
-    if st.button("🗑️ Reset All Progress", use_container_width=True):
+    
+    if st.button("🗑️ Clear Chat History", use_container_width=True):
         st.session_state.messages = []
-        if "chat_session" in st.session_state: del st.session_state.chat_session
+        if "chat_session" in st.session_state:
+            del st.session_state.chat_session
         st.rerun()
+    
+    st.divider()
+    st.info("Your conversations are remembered within this session for better answers.")
 
-# --- 5. ENGINE INITIALIZATION ---
-if "messages" not in st.session_state: st.session_state.messages = []
+# --- 4. CORE ENGINE & MEMORY ---
+st.title("Welcome to your Premium AI ✨")
 
-# --- 6. CHAT INTERFACE ---
-st.title(f"Ready: {model_choice}")
+if "chat_session" not in st.session_state:
+    st.session_state.chat_session = model.start_chat(history=[])
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-for msg in st.session_state.messages:
-    avatar = "👤" if msg["role"]=="user" else "🤖"
-    with st.chat_message(msg["role"], avatar=avatar):
-        if "image" in msg: st.image(msg["image"])
-        else: st.markdown(msg["content"])
+# --- 5. RENDER CHAT HISTORY ---
+for message in st.session_state.messages:
+    avatar = "👤" if message["role"] == "user" else "✨"
+    with st.chat_message(message["role"], avatar=avatar):
+        st.markdown(message["content"])
 
-prompt = st.chat_input("Ask or describe an image...")
+# --- 6. CHAT INPUT & PROCESSING ---
+prompt = st.chat_input("Message the AI...")
 
 if prompt:
+    # 1. User Message
     st.chat_message("user", avatar="👤").markdown(prompt)
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    with st.chat_message("assistant", avatar="🤖"):
+    # 2. AI Response
+    with st.chat_message("assistant", avatar="✨"):
         try:
-            if "imagen" in model_choice:
-                img_model = genai.ImageGenerationModel(model_choice)
-                result = img_model.generate_images(prompt=prompt)
-                st.image(result.images[0])
-                st.session_state.messages.append({"role": "assistant", "image": result.images[0]})
-            else:
-                chat_model = genai.GenerativeModel(model_choice)
-                # Ensure the session uses the current chosen model
-                if "chat_session" not in st.session_state or st.session_state.get("last_model") != model_choice:
-                    st.session_state.chat_session = chat_model.start_chat(history=[])
-                    st.session_state.last_model = model_choice
-                
-                response = st.session_state.chat_session.send_message(prompt, stream=True)
-                
-                def stream_data():
-                    for chunk in response:
-                        if chunk.text: yield chunk.text
-                
-                full_text = st.write_stream(stream_data)
-                st.session_state.messages.append({"role": "assistant", "content": full_text})
-                
-                if supabase:
-                    supabase.table("chat_history").insert({"user_message": prompt, "ai_message": full_text}).execute()
-
+            response = st.session_state.chat_session.send_message(prompt, stream=True)
+            
+            def stream_data():
+                for chunk in response:
+                    if chunk.text: yield chunk.text
+            
+            full_response = st.write_stream(stream_data)
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
+            
+            # 3. Silent Log to Database
+            if supabase:
+                try:
+                    supabase.table("chat_history").insert({"user_message": prompt, "ai_message": full_response}).execute()
+                except:
+                    pass # Keep it silent if logging fails
+                    
         except Exception as e:
-            st.warning("⚠️ Access Issue")
-            st.info(f"System Message: {str(e)}")
+            st.warning("⚠️ The AI is temporarily resting. Please try again in 60 seconds.")
+            # Only show technical logs if they are NOT a 404
+            if "404" in str(e):
+                st.error("System Update Required: The model ID changed. Please contact support.")
