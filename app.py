@@ -13,7 +13,22 @@ except Exception as e:
     st.error(f"Setup Error: {e}")
     st.stop()
 
-# --- 3. SIDEBAR ---
+# --- 3. AUTO-MODEL DISCOVERY ---
+# This part is the "expert" fix. It looks for a working 'lite' model.
+@st.cache_resource
+def get_available_lite_model():
+    try:
+        for m in genai.list_models():
+            # Looks for any model with 'flash' and 'lite' in the name
+            if 'flash' in m.name and 'lite' in m.name:
+                return m.name
+        return "gemini-1.5-flash" # Fallback if no lite is found
+    except:
+        return "gemini-1.5-flash"
+
+LITE_MODEL = get_available_lite_model()
+
+# --- 4. SIDEBAR ---
 with st.sidebar:
     st.title("⚡ Omni-AI Control")
     st.caption("Commercial Grade Interface")
@@ -25,28 +40,17 @@ with st.sidebar:
         model_choice = st.selectbox(
             "🧠 Select Brain",
             [
-                "gemini-1.5-flash-lite",         # Official ID for 3.1 Flash Lite
-                "gemini-1.5-flash",              # Stable workhorse
-                "gemini-1.5-pro",                # Smartest
-                "gemma-2-27b-it",                # Open Source
+                LITE_MODEL,      # The auto-discovered Lite model (500/day)
+                "gemini-1.5-flash", 
+                "gemini-1.5-pro",
+                "gemma-2-27b-it"
             ]
         )
     else:
         model_choice = st.selectbox(
             "🎨 Select Artist",
-            ["imagen-3.0-generate-001"] # Stable Image Model
+            ["imagen-3.0-generate-001"]
         )
-
-    # --- THE MODEL WATCHER ---
-    # If the user changes the model, we clear the old session so the new model takes over
-    if "current_model" not in st.session_state:
-        st.session_state.current_model = model_choice
-
-    if st.session_state.current_model != model_choice:
-        st.session_state.current_model = model_choice
-        if "chat_session" in st.session_state:
-            del st.session_state.chat_session
-        st.toast(f"Switched to {model_choice}!", icon="🔄")
 
     st.divider()
     if st.button("🗑️ Reset All Progress", use_container_width=True):
@@ -54,15 +58,15 @@ with st.sidebar:
         if "chat_session" in st.session_state: del st.session_state.chat_session
         st.rerun()
 
-# --- 4. ENGINE INITIALIZATION ---
-if "messages" not in st.session_state: 
-    st.session_state.messages = []
+# --- 5. ENGINE INITIALIZATION ---
+if "messages" not in st.session_state: st.session_state.messages = []
 
-# --- 5. CHAT INTERFACE ---
+# --- 6. CHAT INTERFACE ---
 st.title(f"Ready: {model_choice}")
 
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"], avatar="👤" if msg["role"]=="user" else "🤖"):
+    avatar = "👤" if msg["role"]=="user" else "🤖"
+    with st.chat_message(msg["role"], avatar=avatar):
         if "image" in msg: st.image(msg["image"])
         else: st.markdown(msg["content"])
 
@@ -75,18 +79,16 @@ if prompt:
     with st.chat_message("assistant", avatar="🤖"):
         try:
             if "imagen" in model_choice:
-                # Image Logic
                 img_model = genai.ImageGenerationModel(model_choice)
                 result = img_model.generate_images(prompt=prompt)
-                image = result.images[0]
-                st.image(image)
-                st.session_state.messages.append({"role": "assistant", "image": image})
-            
+                st.image(result.images[0])
+                st.session_state.messages.append({"role": "assistant", "image": result.images[0]})
             else:
-                # Chat Logic
                 chat_model = genai.GenerativeModel(model_choice)
-                if "chat_session" not in st.session_state:
+                # Ensure the session uses the current chosen model
+                if "chat_session" not in st.session_state or st.session_state.get("last_model") != model_choice:
                     st.session_state.chat_session = chat_model.start_chat(history=[])
+                    st.session_state.last_model = model_choice
                 
                 response = st.session_state.chat_session.send_message(prompt, stream=True)
                 
@@ -101,5 +103,5 @@ if prompt:
                     supabase.table("chat_history").insert({"user_message": prompt, "ai_message": full_text}).execute()
 
         except Exception as e:
-            st.warning("⚠️ This model is temporarily unavailable or at its limit.")
+            st.warning("⚠️ Access Issue")
             st.info(f"System Message: {str(e)}")
