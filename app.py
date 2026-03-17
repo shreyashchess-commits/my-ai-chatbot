@@ -12,7 +12,7 @@ try:
     genai.configure(api_key=google_key)
     
     # THE FIX: Swapping to the "Pro" model to try and bypass the Flash daily limit!
-    model = genai.GenerativeModel('gemini-2.5-pro')
+    model = genai.GenerativeModel('gemini-1.5-flash-lite')
     
 except Exception as e:
     st.error(f"Configuration Error: Please check your Google API Key. {e}")
