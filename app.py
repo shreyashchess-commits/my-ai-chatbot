@@ -34,7 +34,7 @@ If someone asks who made you, tell them a brilliant coder made you!
 """
 
 model = genai.GenerativeModel(
-    'gemini-2.5-flash',
+    'gemini-1.5-flash',
     system_instruction=my_ai_personality
 )
 
